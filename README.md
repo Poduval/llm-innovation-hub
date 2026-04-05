@@ -49,72 +49,33 @@ Run **all** providers against **all** cases:
 
 ```bash
 python test_basic_prompts.py
-```
-
-Run **one** provider (name must match a key in `config/APIs.json`):
-
-```bash
 python test_basic_prompts.py --api groq
+python test_basic_prompts.py --help # check for further opetions
 ```
-
-Run **several** providers (repeat the flag or use a comma-separated list):
-
-```bash
-python test_basic_prompts.py --api groq --api mistral
-python test_basic_prompts.py --api groq,mistral
-```
-
-Run **specific** prompt cases by **`case`** id from `prompts.json` (comma-separated; order is preserved; duplicates are collapsed):
-
-```bash
-python test_basic_prompts.py --case 1
-python test_basic_prompts.py --case 1,2
-python test_basic_prompts.py --case 2,1 --api groq
-```
-
-**Verbose** stderr logs (provider settings redacted, `chat.completions.create` kwargs, response id / model / `finish_reason` / `usage`). Use the flag alone, or `true` / `false`:
-
-```bash
-python test_basic_prompts.py --verbose
-python test_basic_prompts.py --api groq --verbose true
-python test_basic_prompts.py --api groq --verbose false
-```
-
-Combine filters:
-
-```bash
-python test_basic_prompts.py --api groq,mistral --case 1,3 --verbose
-```
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--api NAME` | Limit to one or more providers (default: all). Unknown names exit with an error listing valid providers. |
-| `--case IDS` | Comma-separated `case` values from `prompts.json` (default: all cases). Unknown ids exit with an error listing known ids. |
-| `--verbose` | Detailed logs on stderr; same as `--verbose true`. |
-
-### Output
-
-The driver prints a **structured terminal report** (implemented in `utils/terminal_report.py`): run header (case count, providers, timestamp), per-case sections (**PROMPT** / **RESPONSES**), status lines (**✓ OK** / **✗ FAIL** or ASCII fallbacks), timings, and word-wrapped text. Set **`NO_COLOR=1`** to disable ANSI colors.
-
-### Errors
-
-If a call fails, the script prints **`ERROR: <provider>: <reason>`** on stderr, a full traceback when **`--verbose`** is on, then continues. A short “skipped” line is still printed on stdout for that attempt.
 
 ## Layout
 
-| Path | Role |
-|------|------|
-| `.env.example` | Template for API keys (empty values); **safe to commit**. Copy to `.env`. |
-| `.env` | Your real keys (`{PROVIDER}_API_KEY`). **Not committed** (see `.gitignore`). |
-| `config/APIs.json` | Provider endpoints and generation defaults; safe to commit if keys stay empty. |
-| `prompts.json` | Test cases (`case`, `context`, `prompt`). |
-| `test_basic_prompts.py` | CLI driver: loads config/prompts, filters by `--api` / `--case`, calls APIs, prints the report. |
-| `utils/config_loader.py` | Loads `config/APIs.json` (cached), lists providers, resolves a provider block; loads `.env` via `python-dotenv`. |
-| `utils/prompt_loader.py` | Loads `prompts.json`. |
-| `utils/chat_provider.py` | `complete_chat(prompt, api, verbose=...)` — OpenAI client + key resolution + optional verbose logging. |
-| `utils/terminal_report.py` | ANSI styling, rules, wrapping, run/case/response sections for stdout. |
+Repository layout (create `.env` locally from `.env.example`; it is gitignored):
+
+```text
+.
+├── .env.example              # API key template — safe to commit; copy to .env
+├── .gitignore
+├── README.md
+├── config
+│   └── APIs.json             # provider URLs, models, generation defaults (no real keys)
+├── prompts.json              # test cases: case, context, prompt
+├── requirements.txt
+├── test_basic_prompts.py     # CLI: load config/prompts, --api / --case, run report
+└── utils
+    ├── __init__.py
+    ├── chat_provider.py      # complete_chat(...): OpenAI client, keys, optional verbose log
+    ├── config_loader.py      # APIs.json + python-dotenv
+    ├── prompt_loader.py      # prompts.json
+    └── terminal_report.py    # ANSI report sections for stdout
+```
+
+`.env` (real `{PROVIDER}_API_KEY` values) lives beside `.env.example` when you configure the project; it is not tracked.
 
 ## Requirements
 
