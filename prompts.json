@@ -1,0 +1,17 @@
+[
+  {
+    "case": "1",
+    "context": "Minimal greeting to verify the endpoint responds.",
+    "prompt": "Say hello in one short sentence."
+  },
+  {
+    "case": "2",
+    "context": "Short factual question.",
+    "prompt": "What is the capital of Japan? Answer with the city name only."
+  },
+  {
+    "case": "3",
+    "context": "Brief explanation task.",
+    "prompt": "In two sentences, explain what JSON is."
+  }
+]
