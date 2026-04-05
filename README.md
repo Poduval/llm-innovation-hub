@@ -24,8 +24,13 @@ All three use the same HTTP shape as OpenAI’s **chat completions** API. This r
    pip install -r requirements.txt
    ```
 
-2. **Secrets:** Put API keys in a project-root **`.env`** file (recommended, and **gitignored**), or set `api_key` inside each provider in `config/APIs.json`.  
-   When `api_key` is empty in JSON, the code reads **`{PROVIDER}_API_KEY`** (e.g. `GROQ_API_KEY`, `NVIDIA_API_KEY`, `MISTRAL_API_KEY`). You can override the env var name per provider with **`api_key_env`** in that provider’s block.
+2. **Secrets:** Copy **`.env.example`** to **`.env`** and fill in your keys (`.env` is **gitignored**):
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   When `api_key` is empty in `config/APIs.json`, the app reads **`{PROVIDER}_API_KEY`** (e.g. `GROQ_API_KEY`, `NVIDIA_API_KEY`, `MISTRAL_API_KEY`). You can override the variable name per provider with **`api_key_env`** in that provider’s block. Alternatively, you may set `api_key` directly in JSON (avoid committing real keys).
 
 3. **Config:** `config/APIs.json` is **tracked in git** as a template (URLs, models, `max_tokens`, `temperature`, `top_p`, `timeout_seconds`, `connect_timeout_seconds`, `max_retries`). **Do not commit real keys** in JSON; keep them in `.env` or a private override.
 
@@ -101,7 +106,8 @@ If a call fails, the script prints **`ERROR: <provider>: <reason>`** on stderr, 
 
 | Path | Role |
 |------|------|
-| `.env` | Optional secrets (`{PROVIDER}_API_KEY`). **Not committed** (see `.gitignore`). |
+| `.env.example` | Template for API keys (empty values); **safe to commit**. Copy to `.env`. |
+| `.env` | Your real keys (`{PROVIDER}_API_KEY`). **Not committed** (see `.gitignore`). |
 | `config/APIs.json` | Provider endpoints and generation defaults; safe to commit if keys stay empty. |
 | `prompts.json` | Test cases (`case`, `context`, `prompt`). |
 | `test_basic_prompts.py` | CLI driver: loads config/prompts, filters by `--api` / `--case`, calls APIs, prints the report. |
