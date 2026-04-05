@@ -79,7 +79,7 @@ If a call fails, the script prints **`ERROR: <provider>: <reason>`** on stderr, 
 ## Layout
 
 - `.env` — optional project-root file for `{PROVIDER}_API_KEY` values (see `.gitignore`).
-- `config/APIs.json` — credentials and parameters per provider (listed in `.gitignore` so keys are less likely to be committed; keep a private copy or restore fields after clone).
+- `config/APIs.json` — provider endpoints and generation defaults (commit-safe if `api_key` stays empty; use `.env` for keys).
 - `prompts.json` — test prompt cases.
 - `test_basic_prompts.py` — driver script.
 - `utils/` — `config_loader`, `prompt_loader`, and `chat_provider` (`complete_chat`).
