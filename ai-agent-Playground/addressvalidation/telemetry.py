@@ -1,0 +1,94 @@
+import logging
+import os
+
+from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter as GrpcLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+    OTLPMetricExporter as GrpcMetricExporter,
+)
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+    OTLPSpanExporter as GrpcSpanExporter,
+)
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter as HttpLogExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+    OTLPMetricExporter as HttpMetricExporter,
+)
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter as HttpSpanExporter,
+)
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+logger = logging.getLogger(__name__)
+
+
+def _use_http_exporter() -> bool:
+    protocol = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "").lower()
+    if "http" in protocol:
+        return True
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    return ":19140" in endpoint or ":4318" in endpoint
+
+
+def _otlp_insecure() -> bool:
+    return os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
+
+
+def _resource(service_name: str) -> Resource:
+    attributes = {"service.name": os.getenv("OTEL_SERVICE_NAME", service_name)}
+    instance_id = os.getenv("OTEL_SERVICE_INSTANCE_ID")
+    if instance_id:
+        attributes["service.instance.id"] = instance_id
+    return Resource.create(attributes)
+
+
+def configure_telemetry(app, service_name: str) -> trace.Tracer:
+    """Configure OTLP traces, metrics, and logs when Aspire (or OTEL env) is present."""
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        logger.info("OTEL_EXPORTER_OTLP_ENDPOINT not set; telemetry export disabled")
+        return trace.get_tracer(service_name)
+
+    insecure = _otlp_insecure()
+    resource = _resource(service_name)
+    use_http = _use_http_exporter()
+
+    if use_http:
+        span_exporter = HttpSpanExporter(endpoint=endpoint, insecure=insecure)
+        metric_exporter = HttpMetricExporter(endpoint=endpoint, insecure=insecure)
+        log_exporter = HttpLogExporter(endpoint=endpoint, insecure=insecure)
+    else:
+        span_exporter = GrpcSpanExporter(endpoint=endpoint, insecure=insecure)
+        metric_exporter = GrpcMetricExporter(endpoint=endpoint, insecure=insecure)
+        log_exporter = GrpcLogExporter(endpoint=endpoint, insecure=insecure)
+
+    trace_provider = TracerProvider(resource=resource)
+    trace_provider.add_span_processor(BatchSpanProcessor(span_exporter))
+    trace.set_tracer_provider(trace_provider)
+
+    metric_reader = PeriodicExportingMetricReader(metric_exporter)
+    metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
+
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+    set_logger_provider(logger_provider)
+    logging.getLogger().addHandler(
+        LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
+    )
+
+    FastAPIInstrumentor.instrument_app(app)
+    LoggingInstrumentor().instrument(set_logging_format=True)
+
+    logger.info(
+        "OpenTelemetry configured",
+        extra={"otlp_endpoint": endpoint, "protocol": "http" if use_http else "grpc"},
+    )
+    return trace.get_tracer(service_name)

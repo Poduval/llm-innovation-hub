@@ -1,0 +1,12 @@
+services:
+  servicemodelr:
+    build: ./servicemodelr
+    ports:
+      - "8001:8000"
+    container_name: servicemodelr
+
+  addressvalidation:
+    build: ./addressvalidation
+    ports:
+      - "8002:8000"
+    container_name: addressvalidation
