@@ -1,5 +1,7 @@
 # Swiss Real Estate API Services
 
+> When this folder lives inside **llm-innovation-hub**, see the [root README](../README.md) for the full tech stack, monorepo layout, ports, and how paths resolve from the parent repo.
+
 Two independent FastAPI services, each with its own Docker container.
 
 ## Services
@@ -107,7 +109,7 @@ Stop the stack with `Ctrl+C` in the terminal running the AppHost.
 
 ### Alternative: Aspire CLI
 
-If you install the [.NET 10 SDK](https://dotnet.microsoft.com/download), you can also use:
+If you install the [.NET 9 SDK](https://dotnet.microsoft.com/download) (AppHost targets **net9.0**), you can also use:
 
 ```bash
 cd aspire
