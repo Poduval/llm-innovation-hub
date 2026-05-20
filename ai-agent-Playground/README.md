@@ -1,129 +1,110 @@
-# Swiss Real Estate API Services
+# AI agent playground
 
-> When this folder lives inside **llm-innovation-hub**, see the [root README](../README.md) for the full tech stack, monorepo layout, ports, and how paths resolve from the parent repo.
+Mock Swiss property APIs plus **Open WebUI**, **LiteLLM**, and **Agent: IAZI Valuation Expert**. Parent repo overview: [../README.md](../README.md).
 
-Two independent FastAPI services, each with its own Docker container.
-
-## Services
-
-| Service | Port (host) | Endpoints |
-|---------|-------------|-----------|
-| **ServiceModelR** | 8001 | `POST /price`, `POST /rent` |
-| **AddressValidation** | 8002 | `POST /validate` |
-
-### ServiceModelR
-
-Estimates price or rent for any property type using:
-
-```
-value = location_value[ortId] + roomNb × room_multiplier + surfaceLiving × surface_multiplier
-```
-
-| Field | Constraints |
-|-------|-------------|
-| `ortId` | 1–26 (canton id) |
-| `roomNb` | integer 1–5 |
-| `surfaceLiving` | 80–120 m² |
-
-| Endpoint | `room_multiplier` | `surface_multiplier` |
-|----------|-------------------|----------------------|
-| `/price` | 40,000 | 10,000 |
-| `/rent` | 40 | 1,000 |
-
-`location_value` is a fixed random integer (100–1000) per `ortId`, set at startup.
-
-**Request**
-
-```json
-{ "ortId": 2, "roomNb": 3, "surfaceLiving": 80 }
-```
-
-**Response**
-
-```json
-{ "value": 520000 }
-```
-
-### AddressValidation
-
-Maps a Swiss canton code to `ortId` (1–26).
-
-**Request**
-
-```json
-{ "canton": "ZH" }
-```
-
-**Response**
-
-```json
-{ "ortId": 1 }
-```
-
-Valid canton codes: `ZH`, `BE`, `LU`, `UR`, `SZ`, `OW`, `NW`, `GL`, `ZG`, `FR`, `SO`, `BS`, `BL`, `SH`, `AR`, `AI`, `SG`, `GR`, `AG`, `TG`, `TI`, `VD`, `VS`, `NE`, `GE`, `JU`.
-
-## Run locally
-
-```bash
-# ServiceModelR
-cd servicemodelr && pip install -r requirements.txt && uvicorn main:app --reload --port 8001
-
-# AddressValidation
-cd addressvalidation && pip install -r requirements.txt && uvicorn main:app --reload --port 8002
-```
-
-## Run with Docker Compose
+## Quick start
 
 ```bash
 docker compose up --build
 ```
 
-- ServiceModelR: http://localhost:8001/docs  
-- AddressValidation: http://localhost:8002/docs  
+1. Open [http://localhost:3000](http://localhost:3000)
+2. **New chat** → model **Agent: IAZI Valuation Expert** (`iazi-valuation-expert`)
+3. Paste a prompt from the table below
 
-## Run with .NET Aspire (recommended for dev)
+Provider keys: repo-root [`.env`](../.env). Optional: [`.env.example`](.env.example) (`LITELLM_MASTER_KEY`, `PIPELINES_API_KEY`, `WEBUI_SECRET_KEY`).
 
-Aspire orchestrates both containers, opens the **Aspire Dashboard** (logs, resources, traces), and exposes the same API ports.
+```bash
+docker compose ps          # all five services Up
+docker compose down        # stop
+```
+
+## Example prompts (IAZI Valuation Expert)
+
+| # | Prompt |
+|---|--------|
+| 1 | What is the estimated **purchase price** for a **3-room, 100 m²** apartment in **Bern (BE)**? |
+| 2 | Estimate the **monthly rent** for a **4-room, 110 m²** flat in **Zurich (ZH)**. |
+| 3 | How much would a **5-room, 120 m²** home in **Geneva (GE)** cost to buy? |
+| 4 | What is the rent for a place in **Ticino (TI)**? *(agent should default to 3 rooms, 100 m²)* |
+| 5 | Compare **purchase price** for **3 rooms, 100 m²** in **ZH** vs **VD**. |
+| 6 | Validate canton **XX** and give me a price in Bern. *(invalid canton)* |
+| 7 | I have **ortId 12**, **3 rooms**, **90 m²** — what is the purchase price? |
+| 8 | Give me both **price and monthly rent** for **3 rooms, 100 m²** in **Basel-Stadt (BS)**. |
+
+Expected: tool calls to validate canton and estimate price/rent, then a short answer in **CHF** with assumptions stated.
+
+Agent behavior: [`agents/AGENTS.md`](agents/AGENTS.md) · implementation: [`agents/IAZI.Valuation.Agent.py`](agents/IAZI.Valuation.Agent.py)
+
+## URLs
+
+| Service | URL |
+|---------|-----|
+| **Open WebUI** | [http://localhost:3000](http://localhost:3000) |
+| Agent registered? | [http://localhost:9099/v1/models](http://localhost:9099/v1/models) |
+| LiteLLM | [http://localhost:4000](http://localhost:4000) |
+| ServiceModelR | [http://localhost:8001/docs](http://localhost:8001/docs) |
+| AddressValidation | [http://localhost:8002/docs](http://localhost:8002/docs) |
+
+## Mock APIs (summary)
+
+**AddressValidation** — `POST /validate` with `{"canton":"BE"}` → `{"ortId":2}`  
+Canton codes: `ZH`, `BE`, `LU`, … `JU` (26 cantons).
+
+**ServiceModelR** — `POST /price` or `POST /rent` with:
+
+```json
+{ "ortId": 2, "roomNb": 3, "surfaceLiving": 100 }
+```
+
+→ `{"value": <number>}` (CHF; formula uses fixed per-`ortId` location factor + room/surface multipliers).
+
+Constraints: `ortId` 1–26, `roomNb` 1–5, `surfaceLiving` 80–120.
+
+```bash
+curl -s -X POST http://localhost:8002/validate -H "Content-Type: application/json" -d '{"canton":"BE"}'
+curl -s -X POST http://localhost:8001/price -H "Content-Type: application/json" -d '{"ortId":2,"roomNb":3,"surfaceLiving":100}'
+```
+
+## Agents folder
+
+```
+agents/
+  AGENTS.md                    # behavior per agent
+  IAZI.Valuation.Agent.py      # Pipeline loaded by Pipelines container
+  lib/runtime.py               # shared tool loop
+```
+
+Mounted as `/app/pipelines` in the **pipelines** service. Add new agents as `{Vendor}.{Capability}.Agent.py` + a section in `AGENTS.md`.
+
+Tune LLM model/URLs: **Admin → Pipelines → IAZI.Valuation.Agent → Valves**.
+
+## Aspire (full stack + dashboard)
+
+Orchestrates **all** services (Open WebUI, Pipelines, LiteLLM, both mock APIs) and shows them in the **Aspire Dashboard** with logs, traces, and endpoint links.
 
 ```bash
 cd aspire/AppHost
 dotnet run --launch-profile http
 ```
 
-On startup, the console prints a dashboard login URL, for example:
+Use the login URL printed in the terminal → **Resources** → open endpoints. See **[aspire/README.md](aspire/README.md)** for the full container/URL table and prerequisites.
 
-`http://localhost:15152/login?t=<token>`
+| Resource | URL |
+|----------|-----|
+| Aspire Dashboard | `http://localhost:15152` (from console) |
+| Open WebUI | [http://localhost:3000](http://localhost:3000) |
+| Pipelines | [http://localhost:9099/v1/models](http://localhost:9099/v1/models) |
+| LiteLLM | [http://localhost:4000](http://localhost:4000) |
+| ServiceModelR | [http://localhost:8001/docs](http://localhost:8001/docs) |
+| AddressValidation | [http://localhost:8002/docs](http://localhost:8002/docs) |
 
-Open that link to use the dashboard. From there you can:
+Do not run Aspire and `docker compose` at the same time.
 
-- See **servicemodelr** and **addressvalidation** under Resources
-- Stream **console logs** for each container
-- Open each service’s HTTP endpoint (ports **8001** and **8002**)
-- View **Traces**, **Metrics**, and **Structured logs** exported via OpenTelemetry (OTLP)
+## Troubleshooting
 
-Both Python services instrument FastAPI automatically and add custom spans (e.g. `calculate_estimation`, `validate_canton`) with domain attributes such as `realestate.ort_id` and `address.canton_normalized`.
-
-Stop the stack with `Ctrl+C` in the terminal running the AppHost.
-
-> **Note:** Do not run `docker compose up` at the same time — both use ports 8001 and 8002.
-
-### Alternative: Aspire CLI
-
-If you install the [.NET 9 SDK](https://dotnet.microsoft.com/download) (AppHost targets **net9.0**), you can also use:
-
-```bash
-cd aspire
-aspire run
-```
-
-The AppHost project lives at `aspire/AppHost/AppHost.csproj`.
-
-## Example flow
-
-1. Resolve canton → `ortId` via AddressValidation.
-2. Pass `ortId`, `roomNb`, and `surfaceLiving` to ServiceModelR `/price` or `/rent`.
-
-```bash
-curl -s -X POST http://localhost:8002/validate -H "Content-Type: application/json" -d '{"canton":"BE"}'
-curl -s -X POST http://localhost:8001/price -H "Content-Type: application/json" -d '{"ortId":2,"roomNb":3,"surfaceLiving":80}'
-```
+| Issue | Action |
+|-------|--------|
+| Blank :3000 or :9099 | `docker compose ps`; `docker compose up -d`; first WebUI start may take 1–2 min |
+| `pipelines` Restarting | `docker logs pipelines --tail 30`; `docker compose restart pipelines` |
+| Agent missing in UI | Check [models](http://localhost:9099/v1/models) for `iazi-valuation-expert`; restart pipelines + open-webui |

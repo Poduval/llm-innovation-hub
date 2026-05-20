@@ -10,3 +10,71 @@ services:
     ports:
       - "8002:8000"
     container_name: addressvalidation
+
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    container_name: litellm
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    env_file:
+      - path: ../.env
+        required: false
+      - path: .env
+        required: false
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-local}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    restart: unless-stopped
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: pipelines
+    ports:
+      - "9099:9099"
+    volumes:
+      # Repo folder is `agents/`; Pipelines runtime expects `/app/pipelines`
+      - ./agents:/app/pipelines
+    environment:
+      PIPELINES_API_KEY: ${PIPELINES_API_KEY:-0p3n-w3bu!}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      - litellm
+      - servicemodelr
+      - addressvalidation
+    restart: unless-stopped
+
+  open-webui:
+    build:
+      context: ./open-webui
+      dockerfile: Dockerfile
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    env_file:
+      - path: ../.env
+        required: false
+      - path: .env
+        required: false
+    environment:
+      # LiteLLM (direct models) + Pipelines (agents from ./agents)
+      OPENAI_API_BASE_URLS: http://litellm:4000/v1;http://pipelines:9099
+      OPENAI_API_KEYS: ${LITELLM_MASTER_KEY:-sk-litellm-local};${PIPELINES_API_KEY:-0p3n-w3bu!}
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-change-me-in-production}
+    depends_on:
+      - litellm
+      - pipelines
+      - servicemodelr
+      - addressvalidation
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+
+volumes:
+  open-webui-data:

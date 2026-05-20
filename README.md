@@ -1,272 +1,122 @@
 # LLM innovation hub
 
-This repository combines two related experiments:
+Two independent parts:
 
-1. **LLM prompt comparison** (repo root) — run the same prompts against several **OpenAI-compatible** chat APIs (NVIDIA NIM, Groq, Mistral) using shared config and a terminal report.
-2. **`ai-agent-playground/`** — two mock **Swiss real-estate** HTTP services (FastAPI) for agent/tool demos, with **Docker Compose** and optional **.NET Aspire** orchestration and **OpenTelemetry**.
+1. **LLM prompt comparison** (repo root) — same prompts across NVIDIA NIM, Groq, and Mistral via `test_basic_prompts.py`.
+2. **`ai-agent-playground/`** — mock Swiss property APIs, **LiteLLM**, **Open WebUI**, and **Agent: IAZI Valuation Expert**.
 
-The two parts are independent: no shared Python imports or config files between them.
-
----
-
-## Tech stack
-
-| Area | Languages / runtimes | Main libraries & tools |
-|------|----------------------|-------------------------|
-| **LLM comparison** | Python 3.12+ | [`openai`](https://pypi.org/project/openai/) (chat completions), [`python-dotenv`](https://pypi.org/project/python-dotenv/), [`httpx`](https://pypi.org/project/httpx/) (timeouts via `openai` client) |
-| **Playground APIs** | Python 3.12 | [FastAPI](https://fastapi.tiangolo.com/), [Uvicorn](https://www.uvicorn.org/), [Pydantic](https://docs.pydantic.dev/) v2 |
-| **Playground observability** | — | [OpenTelemetry](https://opentelemetry.io/) SDK + OTLP exporters (gRPC/HTTP); auto-instrumentation for FastAPI and logging |
-| **Playground hosting** | Docker | `docker compose` (two services, Python 3.12-slim images) |
-| **Playground orchestration** | .NET 9 | [Aspire](https://learn.microsoft.com/dotnet/aspire/) 9.3 AppHost (`Aspire.Hosting.AppHost`), Dockerfile resources for both Python apps |
+No shared code between them. API keys for LLMs live in repo-root `.env` (see `.env.example`).
 
 ---
 
-## Repository layout
-
-```text
-.
-├── .env.example                 # Template for LLM API keys (copy to .env)
-├── .gitignore
-├── README.md
-├── config/
-│   └── APIs.json                # LLM provider URLs, models, generation settings
-├── prompts.json                 # Test cases: case, context, prompt
-├── requirements.txt             # Root venv: openai, python-dotenv
-├── test_basic_prompts.py        # CLI driver for LLM comparison
-├── utils/
-│   ├── config_loader.py         # Load APIs.json; dotenv; list_provider_names()
-│   ├── prompt_loader.py         # Load prompts.json
-│   ├── chat_provider.py         # complete_chat(prompt, api, verbose=...)
-│   └── terminal_report.py       # ANSI stdout/stderr report helpers
-└── ai-agent-playground/         # Self-contained playground (see below)
-    ├── AgentsPlayground.sln
-    ├── docker-compose.yml
-    ├── README.md                # API contracts & playground-specific run steps
-    ├── servicemodelr/           # FastAPI: POST /price, POST /rent
-    ├── addressvalidation/       # FastAPI: POST /validate
-    └── aspire/
-        ├── aspire.config.json
-        └── AppHost/             # Aspire: builds Docker contexts ../../servicemodelr, ../../addressvalidation
-```
-
-Paths inside **`ai-agent-playground/`** are written relative to that folder (whether the repo lives standalone or under this hub).
-
----
-
-## Part 1 — LLM prompt comparison (repo root)
-
-### What it does
-
-- Reads provider definitions from **`config/APIs.json`** (top-level keys = provider names, e.g. `nvidia`, `groq`, `mistral`).
-- Reads test cases from **`prompts.json`** (array of `{ "case", "context", "prompt" }`).
-- For each selected case and provider, calls **`utils.chat_provider.complete_chat(prompt, api)`** and prints a formatted report to the terminal.
-
-### APIs under test
-
-| Provider key | Service | Default `base_url` | API key |
-|--------------|---------|-------------------|---------|
-| `nvidia` | [NVIDIA NIM (Build)](https://build.nvidia.com/explore/discover) | `https://integrate.api.nvidia.com/v1` | `NVIDIA_API_KEY` |
-| `groq` | [Groq](https://console.groq.com/) | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
-| `mistral` | [Mistral AI](https://console.mistral.ai/) | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` |
-
-All use the OpenAI **chat completions** shape (`POST …/chat/completions`).
-
-### `config/APIs.json` fields (per provider)
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `api_key` | No* | Inline key; leave empty to use env (see below) |
-| `api_key_env` | No | Override env var name (default: `{PROVIDER}_API_KEY`) |
-| `base_url` | Yes | OpenAI-compatible API root |
-| `model` | Yes | Model id for `chat.completions` |
-| `max_tokens` | Yes | Max completion tokens |
-| `temperature` | No | Sent to API if present |
-| `top_p` | No | Sent to API if present |
-| `timeout_seconds` | No | Read timeout for the HTTP client (default **60**) |
-| `connect_timeout_seconds` | No | Connect timeout (default **15**) |
-| `max_retries` | No | OpenAI client retries (default **1**) |
-
-\*At least one of `api_key` or the resolved env var must be set.
-
-### Secrets (`.env`)
-
-```bash
-cp .env.example .env
-# Edit .env — never commit it (.gitignore)
-```
-
-`config_loader` loads **`.env`** from the **project root** on import. Keys in `.env.example` match the default `{PROVIDER}_API_KEY` names.
-
-### Setup and run
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-python test_basic_prompts.py
-python test_basic_prompts.py --help
-```
-
-### CLI — `test_basic_prompts.py`
-
-| Flag | Description |
-|------|-------------|
-| `--api NAME` | Limit providers (repeat or comma-separated, e.g. `--api groq` or `--api groq,mistral`). Default: all keys in `APIs.json`. |
-| `--case IDS` | Comma-separated `case` ids from `prompts.json` (e.g. `--case 1,2`). Default: all cases. |
-| `--verbose` | Extra stderr logging per call (`--verbose`, `--verbose true`, or `--verbose false`). |
-
-Examples:
-
-```bash
-python test_basic_prompts.py
-python test_basic_prompts.py --api groq
-python test_basic_prompts.py --case 1 --api nvidia,groq
-python test_basic_prompts.py --verbose
-```
-
-On failure for one provider, the script prints `ERROR:` on stderr and continues with the remaining providers.
-
-### Core Python API
-
-```python
-from utils.chat_provider import complete_chat
-
-text = complete_chat("Explain JSON in one sentence.", "groq", verbose=False)
-```
-
-`api` must match a top-level key in `config/APIs.json` (case-insensitive).
-
----
-
-## Part 2 — `ai-agent-playground/`
-
-Mock backends for flows like: **canton → `ortId` → price/rent estimate**. Full request/response schemas and formulas are in **`ai-agent-playground/README.md`**.
-
-### Services and ports (host)
-
-| Service | Host port | Container port | Endpoints |
-|---------|-----------|------------------|-----------|
-| **servicemodelr** | **8001** | 8000 | `POST /price`, `POST /rent`, `GET /health` |
-| **addressvalidation** | **8002** | 8000 | `POST /validate`, `GET /health` |
-
-Aspire exposes the same host ports when using the AppHost.
-
-### How paths work in this monorepo
-
-| Entry point | Working directory | Notes |
-|-------------|-------------------|--------|
-| `docker compose` | `ai-agent-playground/` | `build: ./servicemodelr` and `./addressvalidation` |
-| `uvicorn` (local) | `ai-agent-playground/servicemodelr` or `…/addressvalidation` | See playground README |
-| Aspire AppHost | `ai-agent-playground/aspire/AppHost` | `Program.cs` uses `../../servicemodelr` and `../../addressvalidation` as Docker build contexts |
-| Visual Studio solution | `ai-agent-playground/AgentsPlayground.sln` | Project path `aspire\AppHost\AppHost.csproj` |
-
-From the **repo root**, you can still build the solution:
-
-```bash
-dotnet build ai-agent-playground/AgentsPlayground.sln
-```
-
-### Run with Docker Compose (recommended for a quick check)
+## Quick start — IAZI agent (Open WebUI)
 
 ```bash
 cd ai-agent-playground
 docker compose up --build
 ```
 
-- OpenAPI UI: http://localhost:8001/docs and http://localhost:8002/docs  
-- Health: http://localhost:8001/health , http://localhost:8002/health  
+Open [http://localhost:3000](http://localhost:3000) → **New chat** → model **Agent: IAZI Valuation Expert** (`iazi-valuation-expert`).
 
-Stop: `docker compose down` in the same directory.
+Confirm the stack is up: `docker compose ps` (all services should be **Up**).
 
-Or from the repo root:
+### Example prompts to test the agent
+
+Copy any of these into the chat. The agent should call **AddressValidation** and **ServiceModelR** tools and answer in CHF.
+
+| # | Prompt | What it exercises |
+|---|--------|-------------------|
+| 1 | What is the estimated **purchase price** for a **3-room, 100 m²** apartment in **Bern (BE)**? | Canton → `ortId`, then `/price` |
+| 2 | Estimate the **monthly rent** for a **4-room, 110 m²** flat in **Zurich (ZH)**. | Canton validation + `/rent` |
+| 3 | How much would a **5-room, 120 m²** home in **Geneva (GE)** cost to buy? | Upper bounds on rooms/surface |
+| 4 | What is the rent for a place in **Ticino (TI)**? | Defaults (3 rooms, 100 m²) when details omitted |
+| 5 | Compare **purchase price** for the same property (**3 rooms, 100 m²**) in **ZH** vs **VD**. | Two canton lookups + two price calls |
+| 6 | Validate canton **XX** and give me a price in Bern. | Invalid canton error handling |
+| 7 | I have **ortId 12**, **3 rooms**, **90 m²** — what is the purchase price? | Skips canton step when `ortId` given |
+| 8 | Give me both **price and monthly rent** for a **3-room, 100 m²** apartment in **Basel-Stadt (BS)**. | Price + rent in one thread |
+
+More behavior rules: [`ai-agent-playground/agents/AGENTS.md`](ai-agent-playground/agents/AGENTS.md). Playground details: [`ai-agent-playground/README.md`](ai-agent-playground/README.md).
+
+### Service URLs (Docker Compose)
+
+| Service | URL |
+|---------|-----|
+| **Open WebUI** (chat) | [http://localhost:3000](http://localhost:3000) |
+| Pipelines / agents | [http://localhost:9099/v1/models](http://localhost:9099/v1/models) |
+| LiteLLM | [http://localhost:4000](http://localhost:4000) |
+| ServiceModelR API | [http://localhost:8001/docs](http://localhost:8001/docs) |
+| AddressValidation API | [http://localhost:8002/docs](http://localhost:8002/docs) |
+
+---
+
+## Part 1 — LLM prompt comparison
+
+Runs prompts from `prompts.json` against every provider in `config/APIs.json`.
 
 ```bash
-docker compose -f ai-agent-playground/docker-compose.yml up --build
+cp .env.example .env   # add NVIDIA_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python test_basic_prompts.py
+python test_basic_prompts.py --api groq --case 1
 ```
 
-### Run with .NET Aspire (dev dashboard + OTLP)
+| Provider | Env variable |
+|----------|----------------|
+| `nvidia` | `NVIDIA_API_KEY` |
+| `groq` | `GROQ_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
 
-**Prerequisites:** [.NET 9 SDK](https://dotnet.microsoft.com/download) and Docker (Aspire builds the Python images).
+```python
+from utils.chat_provider import complete_chat
+text = complete_chat("Say hello.", "groq")
+```
+
+---
+
+## Part 2 — `ai-agent-playground/`
+
+Mock flow: **canton → `ortId` → price or rent**. Details: **[`ai-agent-playground/README.md`](ai-agent-playground/README.md)**.
+
+```bash
+cd ai-agent-playground
+docker compose up --build    # all services (see URL table above)
+```
+
+### Aspire (full stack + dashboard)
+
+Same containers as Compose, plus the **Aspire Dashboard** (resources, logs, traces, endpoint links):
 
 ```bash
 cd ai-agent-playground/aspire/AppHost
 dotnet run --launch-profile http
 ```
 
-The console prints an Aspire Dashboard login URL (e.g. `http://localhost:15152/login?t=…`). Use it for logs, traces, and metrics. Python services export OTLP when Aspire sets `OTEL_EXPORTER_OTLP_ENDPOINT`; without it, telemetry stays local-only (no export).
+Open the dashboard URL from the console (e.g. [http://localhost:15152](http://localhost:15152)). Chat UI: [http://localhost:3000](http://localhost:3000). Full container/endpoint table: **[`ai-agent-playground/aspire/README.md`](ai-agent-playground/aspire/README.md)**.
 
-**Do not** run Docker Compose and Aspire at the same time — both bind **8001** and **8002**.
-
-> **Platform note:** `aspire/AppHost/AppHost.csproj` currently references **macOS ARM64** Aspire orchestration packages (`Aspire.Hosting.Orchestration.osx-arm64`, `Aspire.Dashboard.Sdk.osx-arm64`). On Linux or Windows you may need to swap these for the RID-appropriate Aspire packages for your machine.
-
-Alternative (Aspire CLI, if installed):
-
-```bash
-cd ai-agent-playground/aspire
-aspire run
-```
-
-(`aspire.config.json` points at `AppHost/AppHost.csproj`.)
-
-### Example API flow
-
-```bash
-curl -s -X POST http://127.0.0.1:8002/validate \
-  -H "Content-Type: application/json" -d '{"canton":"BE"}'
-
-curl -s -X POST http://127.0.0.1:8001/price \
-  -H "Content-Type: application/json" \
-  -d '{"ortId":2,"roomNb":3,"surfaceLiving":80}'
-```
-
-### Playground Python dependencies
-
-Each service has its own `requirements.txt` under `servicemodelr/` and `addressvalidation/` (FastAPI, Uvicorn, OpenTelemetry stack). Dockerfiles use **Python 3.12-slim** and run:
-
-`uvicorn main:app --host 0.0.0.0 --port 8000`
+Do not run Aspire and `docker compose` together (ports 3000, 4000, 8001, 8002, 9099).
 
 ---
 
-## Ports at a glance
+## Layout
 
-| Port | Used by |
-|------|---------|
-| 8001 | Playground — ServiceModelR |
-| 8002 | Playground — AddressValidation |
-| 15152 (typical) | Aspire Dashboard (HTTP profile) |
-| — | LLM comparison has **no** HTTP server; outbound HTTPS only |
-
----
-
-## Prerequisites summary
-
-| Task | You need |
-|------|----------|
-| LLM comparison | Python 3.12+, venv, API keys in `.env` |
-| Playground (Docker) | Docker Engine, Compose v2 |
-| Playground (Aspire) | .NET 9 SDK, Docker, macOS ARM packages as committed (or adjust csproj) |
-| Playground (local Python) | Python 3.12+, per-service `pip install -r requirements.txt` |
+```text
+.
+├── config/APIs.json, prompts.json, test_basic_prompts.py, utils/
+└── ai-agent-playground/
+    ├── docker-compose.yml, agents/, litellm/, open-webui/
+    ├── servicemodelr/          # POST /price, /rent
+    ├── addressvalidation/      # POST /validate
+    └── aspire/                 # AppHost + aspire/README.md (full stack in dashboard)
+```
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-|---------|----------------|
-| `No API key for "groq"` | Missing `.env` or empty `GROQ_API_KEY` / `api_key` in `APIs.json` |
-| `Unknown API` / `unknown --api` | Typo; provider key must exist in `APIs.json` |
-| `ModuleNotFoundError: utils` | Run scripts from the **repo root**, not from inside `utils/` |
-| Docker build fails | Run `docker compose` from **`ai-agent-playground/`** (or pass `-f` path) |
-| Port already in use | Another process on 8001/8002, or Compose + Aspire both running |
-| `curl` to localhost fails | Confirm containers are up (`docker ps`); try `127.0.0.1` instead of `localhost` |
-
----
-
-## Requirements files
-
-| File | Purpose |
-|------|---------|
-| `requirements.txt` (root) | LLM comparison: `openai`, `python-dotenv` |
-| `ai-agent-playground/servicemodelr/requirements.txt` | ServiceModelR service |
-| `ai-agent-playground/addressvalidation/requirements.txt` | AddressValidation service |
+| Symptom | Fix |
+|---------|-----|
+| Empty page on :3000 or :9099 | `docker compose ps` — start missing services; `docker logs pipelines --tail 30` |
+| Agent not in model list | [http://localhost:9099/v1/models](http://localhost:9099/v1/models) should list `iazi-valuation-expert`; then `docker compose restart pipelines open-webui` |
+| `No API key for "groq"` | Fill repo-root `.env` for LLM comparison |
+| Port in use | Stop duplicate Compose/Aspire or free 3000/4000/8001/8002/9099 |

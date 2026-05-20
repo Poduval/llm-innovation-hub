@@ -1,0 +1,22 @@
+# LiteLLM proxy models — aligned with ../../config/APIs.json at repo root.
+# API keys are read from the environment (see ../.env or ai-agent-Playground/.env).
+
+model_list:
+  - model_name: nvidia-llama3-8b
+    litellm_params:
+      model: openai/meta/llama3-8b-instruct
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: os.environ/NVIDIA_API_KEY
+
+  - model_name: groq-llama-3.1-8b
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: mistral-small
+    litellm_params:
+      model: mistral/mistral-small-latest
+      api_key: os.environ/MISTRAL_API_KEY
+
+litellm_settings:
+  drop_params: true
